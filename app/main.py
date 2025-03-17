@@ -1,8 +1,6 @@
 from flask import request, jsonify, send_from_directory
-from . import app, celery
-from .tasks import download_media
-from .config import config
-import os
+from . import app
+from .tasks import download_queue, active_downloads, DownloadTask, config
 
 
 @app.route("/extract", methods=["POST"])
@@ -11,18 +9,49 @@ def extract_media():
     url = data.get("url")
 
     if not url:
-        return jsonify({"error": "Missing URL"}), 400
+        return (
+            jsonify(
+                {
+                    "error": "Missing URL",
+                    "version": os.getenv("BUILD_HASH", ""),
+                }
+            ),
+            400,
+        )
 
-    task = celery.send_task("app.tasks.download_media", args=[url])
-    return jsonify({"task_id": task.id}), 202
+    # Check if already in progress
+    if url in active_downloads:
+        return jsonify(
+            {
+                "status": "IN_PROGRESS",
+                "version": os.getenv("BUILD_HASH", ""),
+            }
+        )
+
+    # Add to queue
+    task = DownloadTask(url)
+    download_queue.put(task)
+
+    return jsonify(
+        {
+            "status": "QUEUED",
+            "version": os.getenv("BUILD_HASH", ""),
+        }
+    )
 
 
-@app.route("/status/<task_id>", methods=["GET"])
-def task_status(task_id):
-    task = celery.AsyncResult(task_id)
-    return jsonify({"status": task.state, "result": task.result})
+@app.route("/status", methods=["GET"])
+def check_status():
+    url = request.args.get("url")
 
+    if url in active_downloads:
+        task = active_downloads[url]
+        return jsonify(
+            {
+                "status": "DONE",
+                "file": task.filename,
+                "version": os.getenv("BUILD_HASH", ""),
+            }
+        )
 
-@app.route("/result/<filename>", methods=["GET"])
-def get_result(filename):
-    return send_from_directory(config.DOWNLOAD_DIR, filename)
+    return jsonify({"status": "PENDING"})

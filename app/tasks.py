@@ -16,6 +16,9 @@ active_downloads = {}
 # Files expire after this time
 EXPIRATION_TIME = 600
 
+# File where cookies live
+cookie_file = "/app/cookies.txt" if not os.getenv("DEBUG", False) else "cookies.txt"
+
 
 class DownloadTask:
     def __init__(self, url):
@@ -35,7 +38,20 @@ def worker():
 
         # Run yt-dlp
         output_template = os.path.join(config.DOWNLOAD_DIR, "%(title)s.%(ext)s")
-        command = ["yt-dlp", task.url, "-o", output_template]
+        command = [
+            "yt-dlp",
+            task.url,
+            "-o",
+            output_template,
+            "-f",
+            "mp4",  # Force MP4 format
+            "--merge-output-format",
+            "mp4",
+            "--remux-video",
+            "mp4",  # Convert incompatible formats to MP4
+            "--cookies",
+            cookie_file,
+        ]
 
         try:
             logger.info(f"Running command: {' '.join(command)}")

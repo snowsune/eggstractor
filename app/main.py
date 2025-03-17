@@ -1,3 +1,6 @@
+import os
+import logging
+
 from flask import request, jsonify, send_from_directory
 from . import app
 from .tasks import download_queue, active_downloads, DownloadTask, config
